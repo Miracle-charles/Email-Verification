@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification UI</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background: #fff; padding: 32px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        h1 { text-align: center; color: #333; }
+        form { margin-bottom: 24px; }
+        input[type="email"], input[type="file"] { width: 100%; padding: 10px; margin: 8px 0 16px 0; border: 1px solid #ccc; border-radius: 6px; }
+        button { background: #007bff; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+        button:hover { background: #0056b3; }
+        .results { margin-top: 24px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px 12px; border-bottom: 1px solid #eee; }
+        th { background: #f0f0f0; }
+        .status-valid { color: green; font-weight: bold; }
+        .status-invalid { color: red; font-weight: bold; }
+        .status-unverifiable { color: orange; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Email Verification</h1>
+        <!-- Single email form removed -->
+        <form id="file-upload-form">
+            <label for="file">Or upload a CSV file of emails:</label>
+            <input type="file" id="file" name="file" required>
+            <button type="submit">Upload & Verify</button>
+        </form>
+        <div id="progress-bar-container" style="display:none;margin:16px 0;height:24px;background:#eee;border-radius:12px;overflow:hidden;">
+            <div id="progress-bar" style="height:100%;width:0;background:#007bff;transition:width 0.3s;"></div>
+        </div>
+        <div class="results" id="results"></div>
+    </div>
+    <script>
+        // Single email form removed
+        const fileForm = document.getElementById('file-upload-form');
+        const resultsDiv = document.getElementById('results');
+
+        // Single email form event removed
+
+        fileForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('file');
+            const file = fileInput.files[0];
+            if (!file) return;
+            resultsDiv.innerHTML = '';
+            const progressBarContainer = document.getElementById('progress-bar-container');
+            const progressBar = document.getElementById('progress-bar');
+            progressBarContainer.style.display = 'block';
+            progressBar.style.width = '0';
+            const text = await file.text();
+            // Extract all email addresses from the file using regex
+            const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+            const emails = Array.from(new Set((text.match(emailRegex) || []).map(e => e.trim().toLowerCase())));
+            const results = [];
+            for (let i = 0; i < emails.length; i++) {
+                const email = emails[i];
+                progressBar.style.width = `${((i+1)/emails.length)*100}%`;
+                resultsDiv.innerHTML = `Verifying: ${email}... (${i+1}/${emails.length})`;
+                const res = await fetch(`/verify?email=${encodeURIComponent(email)}`);
+                const data = await res.json();
+                results.push(data);
+            }
+            progressBar.style.width = '100%';
+            progressBarContainer.style.display = 'none';
+            // Calculate stats
+            const total = results.length;
+            // Separate valid and active (active = only unverifiable)
+            const valid = results.filter(r => r.status === 'valid');
+            const active = results.filter(r => r.status === 'unverifiable');
+            const inactive = results.filter(r => r.status === 'invalid');
+            // Active domain-related (unverifiable and domain matches)
+            const domains = emails.map(e => (e.split('@')[1]||'').toLowerCase());
+            const uniqueDomains = Array.from(new Set(domains));
+            const activeDomainRelated = active.filter(r => uniqueDomains.includes((r.email.split('@')[1]||'').toLowerCase()));
+            // Summary HTML
+            let summary = `<div style='margin-bottom:12px;'>`;
+            summary += `<b>Total:</b> ${total} &nbsp;`;
+            summary += `<b>Valid:</b> <span id='valid-count'>${valid.length}</span> &nbsp;`;
+            summary += `<b>Active (unverifiable):</b> <span id='active-count'>${active.length}</span> &nbsp;`;
+            summary += `<b>Inactive:</b> <span id='inactive-count'>${inactive.length}</span> &nbsp;`;
+            summary += `<b>Active Domain Related:</b> ${activeDomainRelated.length}`;
+            summary += `</div>`;
+            // Download buttons: Valid, Active, Inactive
+            summary += `<button id='download-valid' style='margin-right:8px;'>Valid (${valid.length})</button>`;
+            summary += `<button id='download-active' style='margin-right:8px;'>Active (${active.length})</button>`;
+            summary += `<button id='download-inactive'>Inactive (${inactive.length})</button>`;
+            resultsDiv.innerHTML = summary + renderTable(results) + `<div style='margin-top:16px;color:#007bff;font-weight:bold;'>Finished checking all emails.</div>`;
+            // Download handlers
+            document.getElementById('download-valid').onclick = () => downloadCSV(valid.map(r => r.email), 'valid_emails.csv');
+            document.getElementById('download-active').onclick = () => downloadCSV(active.map(r => r.email), 'active_emails.csv');
+            document.getElementById('download-inactive').onclick = () => downloadCSV(inactive.map(r => r.email), 'inactive_emails.csv');
+        });
+
+        function renderTable(results) {
+            if (!results.length) return '';
+            let html = '<table><tr><th>Email</th><th>Status</th><th>Reason</th></tr>';
+            for (const r of results) {
+                html += `<tr><td>${r.email}</td><td class="status-${r.status}">${r.status}</td><td>${r.reason}</td></tr>`;
+            }
+            html += '</table>';
+            return html;
+        }
+
+        function downloadCSV(rows, filename) {
+            const csv = rows.join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

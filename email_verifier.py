@@ -21,6 +21,8 @@ import smtplib
 import socket
 import dns.resolver
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 
@@ -182,7 +184,11 @@ def verify_email(email: str):
 
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
+# ─── Health Check ─────────────────────────────────────────────────────────────
 
-@app.get("/")
-def root():
-    return {"message": "Email Verification API is running. Visit /docs to try it out."}
+# Serve static files (web UI)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/experience", include_in_schema=False)
+def experience():
+    return FileResponse("static/index.html")
