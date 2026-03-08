@@ -189,6 +189,6 @@ def verify_email(email: str):
 # Serve static files (web UI)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/experience", include_in_schema=False)
-def experience():
+@app.get("/", include_in_schema=False)
+def root():
     return FileResponse("static/index.html")
